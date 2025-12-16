@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="zh-TW" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>暗棋遊戲</title>
+  <script src="/_sdk/element_sdk.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      box-sizing: border-box;
+    }
+    
+    .chess-piece {
+      transition: all 0.2s ease;
+    }
+    
+    .chess-piece:hover:not(.flipped) {
+      transform: scale(1.05);
+    }
+    
+    .chess-piece.selected {
+      box-shadow: 0 0 0 3px #fbbf24;
+    }
+    
+    .flip-animation {
+      animation: flip 0.4s ease;
+    }
+    
+    @keyframes flip {
+      0% { transform: rotateY(0deg); }
+      50% { transform: rotateY(90deg); }
+      100% { transform: rotateY(0deg); }
+    }
+    
+    .winner-animation {
+      animation: celebrate 0.6s ease infinite;
+    }
+    
+    @keyframes celebrate {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+  </style>
+  <style>@view-transition { navigation: auto; }</style>
+  <script src="/_sdk/data_sdk.js" type="text/javascript"></script>
+ </head>
+ <body class="h-full">
+  <div id="app" class="w-full h-full flex flex-col" style="background: linear-gradient(135deg, #2c5f2d 0%, #1a3a1b 100%);">
+   <header class="p-4 text-center" style="background: rgba(139, 69, 19, 0.3); border-bottom: 2px solid #8b4513;">
+    <h1 id="game-title" class="text-3xl font-bold text-amber-100 mb-1">暗棋遊戲</h1>
+    <div id="game-status" class="text-lg text-amber-200"></div>
+   </header>
+   <main class="flex-1 flex items-center justify-center p-4 overflow-auto">
+    <div class="max-w-5xl w-full">
+     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6"><!-- 紅方資訊 -->
+      <div class="bg-gradient-to-br from-red-900 to-red-950 rounded-xl p-6 shadow-2xl border-4 border-red-700 order-2 lg:order-1">
+       <div class="text-center mb-4">
+        <div class="text-2xl font-bold mb-2 text-red-200"><span id="red-player-name">紅方</span>
+        </div>
+        <div id="red-indicator" class="text-4xl mb-3">
+         🔴
+        </div>
+        <div id="red-pieces" class="text-base text-red-100"></div>
+       </div>
+       <div class="bg-red-950 rounded-lg p-3 text-red-200 text-sm">
+        <div class="font-bold mb-2">
+         棋子階級：
+        </div>
+        <div>
+         將 &gt; 士 &gt; 象 &gt; 車 &gt; 馬 &gt; 包 &gt; 兵
+        </div>
+        <div class="mt-2 text-xs text-red-300">
+         * 兵可吃將
+        </div>
+       </div>
+      </div><!-- 棋盤 -->
+      <div class="order-1 lg:order-2">
+       <div id="board" class="grid grid-cols-4 gap-0 rounded-xl shadow-2xl overflow-hidden" style="background: linear-gradient(135deg, #d4a574 0%, #c19a6b 100%); border: 8px solid #8b4513; box-shadow: 0 10px 40px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.2);"></div>
+      </div><!-- 黑方資訊 -->
+      <div class="bg-gradient-to-br from-gray-800 to-gray-950 rounded-xl p-6 shadow-2xl border-4 border-gray-600 order-3">
+       <div class="text-center mb-4">
+        <div class="text-2xl font-bold mb-2 text-gray-200"><span id="black-player-name">黑方</span>
+        </div>
+        <div id="black-indicator" class="text-4xl mb-3">
+         ⚫
+        </div>
+        <div id="black-pieces" class="text-base text-gray-100"></div>
+       </div>
+       <div class="bg-gray-900 rounded-lg p-3 text-gray-200 text-sm">
+        <div class="font-bold mb-2">
+         遊戲規則：
+        </div>
+        <div class="text-xs leading-relaxed">
+         • 點擊未翻開的棋子來翻牌<br>
+          • 翻牌後立即換對手行動<br>
+          • 只能移動自己顏色的棋<br>
+          • 只能上下左右移動一格<br>
+          • 吃掉對方所有棋子獲勝
+        </div>
+       </div>
+      </div>
+     </div>
+     <div class="mt-6 text-center space-y-3">
+      <div class="flex justify-center gap-4"><button id="mode-pvp" class="mode-btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-lg border-2 border-blue-400"> 👥 雙人對戰 </button> <button id="mode-pve" class="mode-btn bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-lg border-2 border-purple-400"> 🤖 對戰電腦 </button>
+      </div><button id="reset-btn" class="bg-amber-700 hover:bg-amber-600 text-white font-bold py-4 px-12 rounded-xl transition-all shadow-lg hover:shadow-xl border-2 border-amber-500 text-lg"> 🔄 重新開始 </button>
+     </div>
+    </div>
+   </main>
+  </div>
+  <script>
+    const defaultConfig = {
+      game_title: "暗棋遊戲",
+      red_player_name: "紅方",
+      black_player_name: "黑方",
+      background_color: "#2c5f2d",
+      board_color: "#d4a574",
+      text_color: "#fef3c7",
+      primary_action_color: "#b45309",
+      secondary_action_color: "#7f1d1d",
+      font_family: "system-ui",
+      font_size: 16
+    };
+
+    const PIECES = {
+      RED: {
+        將: { rank: 7, count: 1 },
+        士: { rank: 6, count: 2 },
+        象: { rank: 5, count: 2 },
+        車: { rank: 4, count: 2 },
+        馬: { rank: 3, count: 2 },
+        包: { rank: 2, count: 2 },
+        兵: { rank: 1, count: 5 }
+      },
+      BLACK: {
+        帥: { rank: 7, count: 1 },
+        仕: { rank: 6, count: 2 },
+        相: { rank: 5, count: 2 },
+        俥: { rank: 4, count: 2 },
+        傌: { rank: 3, count: 2 },
+        炮: { rank: 2, count: 2 },
+        卒: { rank: 1, count: 5 }
+      }
+    };
+
+    let gameState = {
+      board: [],
+      currentPlayer: 'RED',
+      selectedPiece: null,
+      gameOver: false
+    };
+
+    let gameMode = 'PVP';
+    let aiThinking = false;
+
+    function initGame() {
+      const pieces = [];
+      
+      for (const [name, data] of Object.entries(PIECES.RED)) {
+        for (let i = 0; i < data.count; i++) {
+          pieces.push({ name, rank: data.rank, color: 'RED', revealed: false });
+        }
+      }
+      
+      for (const [name, data] of Object.entries(PIECES.BLACK)) {
+        for (let i = 0; i < data.count; i++) {
+          pieces.push({ name, rank: data.rank, color: 'BLACK', revealed: false });
+        }
+      }
+      
+      for (let i = pieces.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pieces[i], pieces[j]] = [pieces[j], pieces[i]];
+      }
+      
+      gameState.board = pieces;
+      gameState.currentPlayer = 'RED';
+      gameState.selectedPiece = null;
+      gameState.gameOver = false;
+      aiThinking = false;
+      
+      renderBoard();
+      updateStatus();
+    }
+
+    function renderBoard() {
+      const board = document.getElementById('board');
+      board.innerHTML = '';
+      
+      gameState.board.forEach((piece, index) => {
+        if (piece === null) {
+          const emptyCell = document.createElement('div');
+          emptyCell.className = 'aspect-square';
+          emptyCell.style.background = 'transparent';
+          emptyCell.style.borderRight = (index % 4 !== 3) ? '2px solid rgba(139, 69, 19, 0.3)' : 'none';
+          emptyCell.style.borderBottom = (Math.floor(index / 4) !== 7) ? '2px solid rgba(139, 69, 19, 0.3)' : 'none';
+          emptyCell.dataset.index = index;
+          emptyCell.addEventListener('click', () => handleCellClick(index));
+          board.appendChild(emptyCell);
+        } else {
+          const cell = document.createElement('div');
+          cell.className = `chess-piece aspect-square flex items-center justify-center cursor-pointer font-bold ${
+            piece.revealed ? 'flipped' : ''
+          }`;
+          
+          cell.style.borderRight = (index % 4 !== 3) ? '2px solid rgba(139, 69, 19, 0.3)' : 'none';
+          cell.style.borderBottom = (Math.floor(index / 4) !== 7) ? '2px solid rgba(139, 69, 19, 0.3)' : 'none';
+          cell.style.margin = '8px';
+          
+          if (piece.revealed) {
+            const isRed = piece.color === 'RED';
+            cell.style.background = isRed 
+              ? 'radial-gradient(circle at 30% 30%, #fee2e2, #fca5a5)' 
+              : 'radial-gradient(circle at 30% 30%, #e5e7eb, #9ca3af)';
+            cell.style.border = isRed ? '3px solid #991b1b' : '3px solid #374151';
+            cell.style.borderRadius = '50%';
+            cell.style.boxShadow = '0 4px 8px rgba(0,0,0,0.3), inset 0 2px 4px rgba(255,255,255,0.3)';
+            cell.style.color = isRed ? '#7f1d1d' : '#1f2937';
+            cell.style.fontSize = '1.75rem';
+            cell.style.fontWeight = '900';
+            cell.textContent = piece.name;
+            cell.style.textShadow = '1px 1px 2px rgba(255,255,255,0.5)';
+          } else {
+            cell.style.background = 'linear-gradient(135deg, #92400e 0%, #78350f 100%)';
+            cell.style.border = '3px solid #451a03';
+            cell.style.borderRadius = '50%';
+            cell.style.boxShadow = '0 4px 8px rgba(0,0,0,0.4), inset 0 2px 4px rgba(255,255,255,0.2)';
+            cell.style.color = '#fbbf24';
+            cell.style.fontSize = '2rem';
+            cell.style.fontWeight = 'bold';
+            cell.textContent = '暗';
+            cell.style.textShadow = '2px 2px 4px rgba(0,0,0,0.7)';
+          }
+          
+          if (gameState.selectedPiece === index) {
+            cell.classList.add('selected');
+            cell.style.transform = 'scale(1.1)';
+          }
+          
+          cell.dataset.index = index;
+          cell.addEventListener('click', () => handleCellClick(index));
+          board.appendChild(cell);
+        }
+      });
+      
+      updatePieceCounts();
+    }
+
+    function handleCellClick(index) {
+      if (gameState.gameOver || aiThinking) return;
+      
+      if (gameMode === 'PVE' && gameState.currentPlayer === 'BLACK') return;
+      
+      const piece = gameState.board[index];
+      
+      if (gameState.selectedPiece === null) {
+        if (piece === null) return;
+        
+        if (!piece.revealed) {
+          piece.revealed = true;
+          const cell = document.querySelector(`[data-index="${index}"]`);
+          if (cell) cell.classList.add('flip-animation');
+          
+          gameState.currentPlayer = gameState.currentPlayer === 'RED' ? 'BLACK' : 'RED';
+          
+          renderBoard();
+          updateStatus();
+          checkGameOver();
+          
+          if (gameMode === 'PVE' && gameState.currentPlayer === 'BLACK' && !gameState.gameOver) {
+            setTimeout(() => aiMove(), 800);
+          }
+          return;
+        }
+        
+        if (piece.color !== gameState.currentPlayer) return;
+        
+        gameState.selectedPiece = index;
+        renderBoard();
+      } else {
+        if (index === gameState.selectedPiece) {
+          gameState.selectedPiece = null;
+          renderBoard();
+          return;
+        }
+        
+        const selectedPiece = gameState.board[gameState.selectedPiece];
+        
+        if (piece && piece.revealed && piece.color === selectedPiece.color) {
+          gameState.selectedPiece = index;
+          renderBoard();
+          return;
+        }
+        
+        if (isValidMove(gameState.selectedPiece, index)) {
+          makeMove(gameState.selectedPiece, index);
+        } else {
+          gameState.selectedPiece = null;
+          renderBoard();
+        }
+      }
+    }
+
+    function isValidMove(from, to) {
+      const piece = gameState.board[from];
+      const target = gameState.board[to];
+      
+      const fromRow = Math.floor(from / 4);
+      const fromCol = from % 4;
+      const toRow = Math.floor(to / 4);
+      const toCol = to % 4;
+      
+      const isAdjacent = Math.abs(fromRow - toRow) + Math.abs(fromCol - toCol) === 1;
+      
+      if (!isAdjacent) return false;
+      
+      if (target === null) return true;
+      
+      if (!target.revealed) return false;
+      
+      if (target.color === piece.color) return false;
+      
+      return canCapture(piece, target);
+    }
+
+    function canCapture(attacker, defender) {
+      if (attacker.rank > defender.rank) return true;
+      if (attacker.rank < defender.rank) return false;
+      
+      if (attacker.rank === 1 && defender.rank === 7) return true;
+      if (attacker.rank === 7 && defender.rank === 1) return false;
+      
+      return true;
+    }
+
+    function makeMove(from, to) {
+      gameState.board[to] = gameState.board[from];
+      gameState.board[from] = null;
+      
+      gameState.currentPlayer = gameState.currentPlayer === 'RED' ? 'BLACK' : 'RED';
+      gameState.selectedPiece = null;
+      
+      renderBoard();
+      updateStatus();
+      checkGameOver();
+      
+      if (gameMode === 'PVE' && gameState.currentPlayer === 'BLACK' && !gameState.gameOver) {
+        setTimeout(() => aiMove(), 800);
+      }
+    }
+
+    function checkGameOver() {
+      const allRedPieces = gameState.board.filter(p => p && p.color === 'RED');
+      const allBlackPieces = gameState.board.filter(p => p && p.color === 'BLACK');
+      
+      if (allRedPieces.length === 0) {
+        endGame('BLACK');
+        return;
+      }
+      
+      if (allBlackPieces.length === 0) {
+        endGame('RED');
+        return;
+      }
+    }
+
+    function endGame(winner) {
+      gameState.gameOver = true;
+      const statusEl = document.getElementById('game-status');
+      const winnerName = winner === 'RED' 
+        ? (window.elementSdk?.config?.red_player_name || defaultConfig.red_player_name)
+        : (window.elementSdk?.config?.black_player_name || defaultConfig.black_player_name);
+      statusEl.textContent = `🎉 ${winnerName}獲勝！`;
+      statusEl.classList.add('winner-animation');
+    }
+
+    function updateStatus() {
+      const statusEl = document.getElementById('game-status');
+      const redIndicator = document.getElementById('red-indicator');
+      const blackIndicator = document.getElementById('black-indicator');
+      
+      if (!gameState.gameOver) {
+        const currentName = gameState.currentPlayer === 'RED'
+          ? (window.elementSdk?.config?.red_player_name || defaultConfig.red_player_name)
+          : (window.elementSdk?.config?.black_player_name || defaultConfig.black_player_name);
+        statusEl.textContent = `${currentName}的回合`;
+        statusEl.classList.remove('winner-animation');
+      }
+      
+      redIndicator.style.opacity = gameState.currentPlayer === 'RED' ? '1' : '0.3';
+      blackIndicator.style.opacity = gameState.currentPlayer === 'BLACK' ? '1' : '0.3';
+    }
+
+    function aiMove() {
+      if (aiThinking || gameState.gameOver || gameState.currentPlayer !== 'BLACK') return;
+      
+      aiThinking = true;
+      
+      const possibleMoves = [];
+      const unrevealedPieces = [];
+      
+      for (let i = 0; i < gameState.board.length; i++) {
+        const piece = gameState.board[i];
+        
+        if (piece && !piece.revealed) {
+          unrevealedPieces.push(i);
+          continue;
+        }
+        
+        if (!piece || piece.color !== 'BLACK' || !piece.revealed) continue;
+        
+        const row = Math.floor(i / 4);
+        const col = i % 4;
+        const neighbors = [
+          [row - 1, col], [row + 1, col],
+          [row, col - 1], [row, col + 1]
+        ];
+        
+        for (const [nRow, nCol] of neighbors) {
+          if (nRow >= 0 && nRow < 8 && nCol >= 0 && nCol < 4) {
+            const targetIndex = nRow * 4 + nCol;
+            if (isValidMove(i, targetIndex)) {
+              const target = gameState.board[targetIndex];
+              let priority = 0;
+              
+              if (target && target.revealed) {
+                priority = 100 + target.rank * 10;
+              } else if (target === null) {
+                priority = 10;
+              }
+              
+              possibleMoves.push({ from: i, to: targetIndex, priority });
+            }
+          }
+        }
+      }
+      
+      let selectedMove = null;
+      
+      if (possibleMoves.length > 0) {
+        possibleMoves.sort((a, b) => b.priority - a.priority);
+        
+        if (Math.random() < 0.8) {
+          selectedMove = possibleMoves[0];
+        } else {
+          selectedMove = possibleMoves[Math.floor(Math.random() * Math.min(3, possibleMoves.length))];
+        }
+      } else if (unrevealedPieces.length > 0) {
+        const randomIndex = Math.floor(Math.random() * unrevealedPieces.length);
+        selectedMove = { flip: unrevealedPieces[randomIndex] };
+      }
+      
+      if (selectedMove) {
+        setTimeout(() => {
+          if (selectedMove.flip !== undefined) {
+            const piece = gameState.board[selectedMove.flip];
+            if (piece && !piece.revealed) {
+              piece.revealed = true;
+              const cell = document.querySelector(`[data-index="${selectedMove.flip}"]`);
+              if (cell) cell.classList.add('flip-animation');
+              
+              gameState.currentPlayer = 'RED';
+              
+              renderBoard();
+              updateStatus();
+              checkGameOver();
+            }
+            aiThinking = false;
+          } else {
+            gameState.selectedPiece = selectedMove.from;
+            renderBoard();
+            setTimeout(() => {
+              makeMove(selectedMove.from, selectedMove.to);
+              aiThinking = false;
+            }, 400);
+          }
+        }, 600);
+      } else {
+        aiThinking = false;
+      }
+    }
+
+    function updatePieceCounts() {
+      const redPieces = gameState.board.filter(p => p && p.color === 'RED');
+      const blackPieces = gameState.board.filter(p => p && p.color === 'BLACK');
+      const redRevealed = gameState.board.filter(p => p && p.color === 'RED' && p.revealed);
+      const blackRevealed = gameState.board.filter(p => p && p.color === 'BLACK' && p.revealed);
+      
+      document.getElementById('red-pieces').textContent = `剩餘: ${redPieces.length} (已翻開: ${redRevealed.length})`;
+      document.getElementById('black-pieces').textContent = `剩餘: ${blackPieces.length} (已翻開: ${blackRevealed.length})`;
+    }
+
+    async function onConfigChange(config) {
+      const customFont = config.font_family || defaultConfig.font_family;
+      const baseFontStack = 'system-ui, -apple-system, sans-serif';
+      const baseSize = config.font_size || defaultConfig.font_size;
+      
+      const bgColor = config.background_color || defaultConfig.background_color;
+      const boardColor = config.board_color || defaultConfig.board_color;
+      const textColor = config.text_color || defaultConfig.text_color;
+      const primaryColor = config.primary_action_color || defaultConfig.primary_action_color;
+      
+      document.getElementById('game-title').textContent = config.game_title || defaultConfig.game_title;
+      document.getElementById('red-player-name').textContent = config.red_player_name || defaultConfig.red_player_name;
+      document.getElementById('black-player-name').textContent = config.black_player_name || defaultConfig.black_player_name;
+      
+      const app = document.getElementById('app');
+      app.style.background = `linear-gradient(135deg, ${bgColor} 0%, #1a3a1b 100%)`;
+      
+      const board = document.getElementById('board');
+      board.style.background = `linear-gradient(135deg, ${boardColor} 0%, #c19a6b 100%)`;
+      
+      document.getElementById('game-title').style.fontFamily = `${customFont}, ${baseFontStack}`;
+      document.getElementById('game-title').style.fontSize = `${baseSize * 1.875}px`;
+      document.getElementById('game-title').style.color = textColor;
+      
+      document.getElementById('game-status').style.fontFamily = `${customFont}, ${baseFontStack}`;
+      document.getElementById('game-status').style.fontSize = `${baseSize * 1.125}px`;
+      document.getElementById('game-status').style.color = textColor;
+      
+      document.getElementById('reset-btn').style.backgroundColor = primaryColor;
+      document.getElementById('reset-btn').style.fontFamily = `${customFont}, ${baseFontStack}`;
+      document.getElementById('reset-btn').style.fontSize = `${baseSize * 1.125}px`;
+      
+      updateStatus();
+    }
+
+    if (window.elementSdk) {
+      window.elementSdk.init({
+        defaultConfig,
+        onConfigChange,
+        mapToCapabilities: (config) => ({
+          recolorables: [
+            {
+              get: () => config.background_color || defaultConfig.background_color,
+              set: (value) => {
+                config.background_color = value;
+                window.elementSdk.setConfig({ background_color: value });
+              }
+            },
+            {
+              get: () => config.board_color || defaultConfig.board_color,
+              set: (value) => {
+                config.board_color = value;
+                window.elementSdk.setConfig({ board_color: value });
+              }
+            },
+            {
+              get: () => config.text_color || defaultConfig.text_color,
+              set: (value) => {
+                config.text_color = value;
+                window.elementSdk.setConfig({ text_color: value });
+              }
+            },
+            {
+              get: () => config.primary_action_color || defaultConfig.primary_action_color,
+              set: (value) => {
+                config.primary_action_color = value;
+                window.elementSdk.setConfig({ primary_action_color: value });
+              }
+            },
+            {
+              get: () => config.secondary_action_color || defaultConfig.secondary_action_color,
+              set: (value) => {
+                config.secondary_action_color = value;
+                window.elementSdk.setConfig({ secondary_action_color: value });
+              }
+            }
+          ],
+          borderables: [],
+          fontEditable: {
+            get: () => config.font_family || defaultConfig.font_family,
+            set: (value) => {
+              config.font_family = value;
+              window.elementSdk.setConfig({ font_family: value });
+            }
+          },
+          fontSizeable: {
+            get: () => config.font_size || defaultConfig.font_size,
+            set: (value) => {
+              config.font_size = value;
+              window.elementSdk.setConfig({ font_size: value });
+            }
+          }
+        }),
+        mapToEditPanelValues: (config) => new Map([
+          ['game_title', config.game_title || defaultConfig.game_title],
+          ['red_player_name', config.red_player_name || defaultConfig.red_player_name],
+          ['black_player_name', config.black_player_name || defaultConfig.black_player_name]
+        ])
+      });
+    }
+
+    document.getElementById('reset-btn').addEventListener('click', (e) => {
+      e.preventDefault();
+      initGame();
+    });
+
+    document.getElementById('mode-pvp').addEventListener('click', (e) => {
+      e.preventDefault();
+      gameMode = 'PVP';
+      updateModeButtons();
+      initGame();
+    });
+
+    document.getElementById('mode-pve').addEventListener('click', (e) => {
+      e.preventDefault();
+      gameMode = 'PVE';
+      updateModeButtons();
+      initGame();
+    });
+
+    function updateModeButtons() {
+      const pvpBtn = document.getElementById('mode-pvp');
+      const pveBtn = document.getElementById('mode-pve');
+      
+      if (gameMode === 'PVP') {
+        pvpBtn.style.opacity = '1';
+        pvpBtn.style.transform = 'scale(1.05)';
+        pveBtn.style.opacity = '0.6';
+        pveBtn.style.transform = 'scale(1)';
+      } else {
+        pvpBtn.style.opacity = '0.6';
+        pvpBtn.style.transform = 'scale(1)';
+        pveBtn.style.opacity = '1';
+        pveBtn.style.transform = 'scale(1.05)';
+      }
+    }
+
+    updateModeButtons();
+    initGame();
+  </script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9aeae2dcf6efa349',t:'MTc2NTg1MzU2Mi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
